@@ -266,50 +266,55 @@ async function initViewer() {
 }
 
 
+// 先頭のほうに追加（loadDataの中でも外でもOK）
+const apiBase =
+  location.hostname === "localhost"
+    ? "http://localhost:3001"        // ローカル開発用
+    : "http://13.231.123.15:3001";   // EC2 本番用
 
  // === データ取得・描画 ===
 async function loadElectricity() {
   const start = document.getElementById("start").value;
   const end = document.getElementById("end").value;
 
-  // =============================
-  // ① 時間別平均データ（グラフ用）
-  // =============================
-  const urlHourly = `http://localhost:3001/api/electricity/hourly?floor_min=1&floor_max=9&start=${start}&end=${end}`;
-  console.log("Fetch hourly:", urlHourly);
+ // =============================
+// ① 時間別平均データ（グラフ用）
+// =============================
+const urlHourly = `${apiBase}/api/electricity/hourly?floor_min=1&floor_max=9&start=${start}&end=${end}`;
+console.log("Fetch hourly:", urlHourly);
 
-  const resHourly = await fetch(urlHourly);
-  const hourlyData = await resHourly.json();
-  if (!hourlyData.length) {
-    alert("時間別データがありません。");
-    return;
-  }
+const resHourly = await fetch(urlHourly);
+const hourlyData = await resHourly.json();
+if (!hourlyData.length) {
+  alert("時間別データがありません。");
+  return;
+}
 
-  // =============================
-  // ② 合計電力量データ（KPI・ランキング用）
-  // =============================
-  const urlSum = `http://localhost:3001/api/electricity?floor_min=1&floor_max=9&start=${start}&end=${end}`;
-  console.log("Fetch total:", urlSum);
+// =============================
+// ② 合計電力量データ（KPI・ランキング用）
+// =============================
+const urlSum = `${apiBase}/api/electricity?floor_min=1&floor_max=9&start=${start}&end=${end}`;
+console.log("Fetch total:", urlSum);
 
-  const resSum = await fetch(urlSum);
-  const sumData = await resSum.json();
-  if (!sumData.length) {
-    alert("合計データがありません。");
-    return;
-  }
+const resSum = await fetch(urlSum);
+const sumData = await resSum.json();
+if (!sumData.length) {
+  alert("合計データがありません。");
+  return;
+}
 
-  // ---- 集計（合計）----
-  const floors = [...new Set(sumData.map(d => d.floor))].sort((a, b) => a - b);
-  const floorSum = floors.map(floor => {
-    const row = sumData.find(d => d.floor === floor);
-    return row ? Number(row.kwh_sum) : 0;
-  });
+// ---- 集計（合計）----
+const floors = [...new Set(sumData.map(d => d.floor))].sort((a, b) => a - b);
+const floorSum = floors.map(floor => {
+  const row = sumData.find(d => d.floor === floor);
+  return row ? Number(row.kwh_sum) : 0;
+});
 
-  const totalSum = floorSum.reduce((a, b) => a + b, 0);
-  const maxSum = Math.max(...floorSum);
-  const minSum = Math.min(...floorSum);
-  const maxF = floors[floorSum.indexOf(maxSum)];
-  const minF = floors[floorSum.indexOf(minSum)];
+const totalSum = floorSum.reduce((a, b) => a + b, 0);
+const maxSum = Math.max(...floorSum);
+const minSum = Math.min(...floorSum);
+const maxF = floors[floorSum.indexOf(maxSum)];
+const minF = floors[floorSum.indexOf(minSum)];
 
 // =============================
 // ③ 全体平均（1日あたり）を正確に算出
@@ -317,7 +322,7 @@ async function loadElectricity() {
 
 // ✅ BigQueryの日別ビューから全階合計を取得
 const resDaily = await fetch(
-  `http://localhost:3001/api/electricity/daily?start=${start}&end=${end}`
+  `${apiBase}/api/electricity/daily?start=${start}&end=${end}`
 );
 const dailyData = await resDaily.json();
 
@@ -326,6 +331,7 @@ if (!dailyData.length) {
   return;
 }
 console.log("📊 日別データ:", dailyData);
+
 
 // ✅ 各日の全階合計を算出
 const dailyTotals = {};
@@ -412,7 +418,7 @@ line1.setOption({
 const line2 = echarts.init(document.getElementById("lineChart"));
 
 const resDaily2 = await fetch(
-  `http://localhost:3001/api/electricity/daily?floor_min=1&floor_max=9&start=${start}&end=${end}`
+  `${apiBase}/api/electricity/daily?floor_min=1&floor_max=9&start=${start}&end=${end}`
 );
 const dailyData2 = await resDaily2.json();
 
@@ -501,16 +507,17 @@ async function colorWallsByElectricityFromServer() {
   const end = document.getElementById("end").value;
 
   console.log("📡 Forge用データ取得開始:", start, "→", end);
+// --- 日別データ取得 ---
+const res = await fetch(
+  `${apiBase}/api/electricity/daily?floor_min=1&floor_max=9&start=${start}&end=${end}`
+);
+const dailyData = await res.json();
 
-  // --- 日別データ取得 ---
-  const res = await fetch(
-    `http://localhost:3001/api/electricity/daily?floor_min=1&floor_max=9&start=${start}&end=${end}`
-  );
-  const dailyData = await res.json();
-  if (!dailyData.length) {
-    console.warn("⚠ 日別データがありません。");
-    return;
-  }
+if (!dailyData.length) {
+  console.warn("⚠ 日別データがありません。");
+  return;
+}
+
 
   // --- ✅ 階別日平均電力量を算出 ---
   const floorDailyAvg = {};

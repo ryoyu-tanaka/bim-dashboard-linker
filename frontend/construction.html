@@ -297,16 +297,32 @@ const ROOM_KEYWORDS = [
   "機械室"
 ];
 
+const apiBase =
+  location.hostname === "localhost"
+    ? "http://localhost:3001"
+    : "http://13.231.123.15:3001";
+
 
 window.onload = async () => {
-  const res = await fetch("http://localhost:3001/api/work/detail");
+  // ★ localhost 直書き → apiBase に変更
+  const res = await fetch(`${apiBase}/api/work/detail`);
   allData = await res.json();
+
   const years = [...new Set(allData.map(d => d.year))].sort();
   const sel = document.getElementById("yearSelect");
-  years.forEach(y => { const o=document.createElement("option"); o.value=y; o.textContent=y+"年"; sel.appendChild(o); });
-  sel.addEventListener("change",()=>updateDashboard(sel.value));
+
+  years.forEach(y => {
+    const o = document.createElement("option");
+    o.value = y;
+    o.textContent = y + "年";
+    sel.appendChild(o);
+  });
+
+  sel.addEventListener("change", () => updateDashboard(sel.value));
+
   await initViewer();
 };
+
 
 // スライド位置: 0=内訳, 1=一覧, 2=詳細
 let currentSlide = 0;
