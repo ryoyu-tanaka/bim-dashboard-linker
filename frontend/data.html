@@ -1,0 +1,729 @@
+<!DOCTYPE html> 
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Seat Usage Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
+  <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js"></script>
+  <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css" />
+
+  <style>
+    body {
+      font-family: "游ゴシック", "Yu Gothic", sans-serif;
+      font-weight: bold;
+      margin: 0; padding: 0;
+      background: #f4f6fa;
+      color: #222;
+    }
+
+    header {
+      background: #1f2937;
+      color: white;
+      padding: 15px 30px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    h2 {
+      margin: 0 0 15px 0;
+      font-size: 26px;
+      letter-spacing: 1px;
+    }
+
+    .controls {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    select, input, button {
+      font-family: "游ゴシック", "Yu Gothic", sans-serif;
+      font-weight: bold;
+      font-size: 18px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      border: 2px solid #2563eb;
+      outline: none;
+      transition: 0.2s;
+    }
+
+    select:hover, input:hover, button:hover {
+      transform: scale(1.03);
+      box-shadow: 0 0 8px rgba(37,99,235,0.3);
+    }
+
+    button {
+      background: #2563eb;
+      color: white;
+      cursor: pointer;
+    }
+
+/* ====== メインレイアウト（KPI・Viewer・Ranking・Graphs） ====== */
+.main-layout {
+  display: grid;
+  grid-template-rows: 1fr 0.5fr; /* 上: KPI+Viewer+Ranking / 下: グラフ */
+  gap: 16px;
+  height: calc(150vh - 10px);
+  margin: 10px 20px;
+}
+
+/* === 上段（KPI＋Viewer＋Ranking） === */
+.top-section {
+  display: grid;
+  grid-template-columns: minmax(200px, 300px) 1fr 0.9fr; /* ✅ KPI固定, Viewer可変, Ranking右詰め */
+  gap: 16px;
+  align-items: stretch;
+}
+
+/* === KPI列 === */
+.left-panel {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+  max-width: 300px;
+  min-width: 240px;
+  height: 100%; /* ✅ 画面に合わせて縦方向調整 */
+  box-sizing: border-box;
+}
+
+/* KPIカード */
+.kpi {
+  flex: 1;
+  min-height: 140px;          /* ✅ 最小高さを保証（小画面対策） */
+  aspect-ratio: 1 / 1;        /* ✅ 正方形比を維持 */
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 10px;
+  transition: 0.2s;
+}
+.kpi:hover {
+  transform: translateY(-3px);
+}
+
+/* KPI間の隙間が均等になるように */
+.kpi-container {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-around;
+  height: 100%;
+  gap: 12px;
+}
+
+
+/* === ビューワー（中央可変） === */
+.viewer-panel {
+  position: relative;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  display: flex;
+}
+#forgeViewer {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+}
+
+/* === ランキングパネル（右詰め・グリッド表示） === */
+/* === ランキングパネル === */
+.right-panel {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 8px 10px 8px 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  align-items: flex-end;
+  box-sizing: border-box;
+  pointer-events: auto; /* 自分の内部だけでクリック */
+  z-index: 10;
+}
+
+/* === テーブル === */
+#rankingTable {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: right;
+  table-layout: fixed; /* ✅ 列幅固定化で改行防止 */
+}
+
+#rankingTable h3 {
+  text-align: right;
+  margin: 0 6px 10px 0;
+  font-size: 17px;
+  font-weight: bold;
+}
+
+#rankingTable th,
+#rankingTable td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5e7eb;
+  font-size: 14px;
+  white-space: nowrap; /* ✅ 改行防止 */
+}
+
+#rankingTable th {
+  background: #f9fafb;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+#rankingTable tr:hover {
+  background: #f3f4f6;
+}
+
+/* === 棒グラフ用セル === */
+#rankingTable td.bar {
+  width: 100%;
+  position: relative;
+  padding: 0 10px;
+}
+
+.bar-bg {
+  position: relative;
+  height: 10px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 6px 0;
+}
+
+.bar-fill {
+  position: absolute;
+  height: 100%;
+  left: 0;
+  top: 0;
+  border-radius: 4px;
+  transition: width 0.6s ease;
+}
+
+
+/* === 下段：グラフ === */
+.bottom-graphs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  width: 100%;
+  align-items: stretch;
+}
+.bottom-graphs > div {
+  background: white;
+  border-radius: 12px;
+  padding: 10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* === 棒グラフがViewer操作をブロックしないように === */
+.bar-bg,
+.bar-fill {
+  pointer-events: none !important; /* ✅ Viewerへのマウスイベントを通す */
+}
+
+
+
+
+
+  </style>
+</head>
+
+<body>
+  <header>
+    <h2>座席稼働率ダッシュボード</h2>
+    <div class="controls">
+      <select id="floor">
+        <option value="7">赤坂_7階</option>
+        <option value="8">赤坂_8階</option>
+        <option value="9">赤坂_9階</option>
+      </select>
+      <input id="start" placeholder="開始日" />
+      <input id="end" placeholder="終了日" />
+      <button onclick="loadDataAndColorize()">データ更新</button>
+    </div>
+  </header>
+
+  <!-- 🌈 メイン3カラム構成 -->
+  <div class="main-layout">
+    <!-- 上段：KPI＋Viewer＋Ranking -->
+    <div class="top-section">
+      <div class="left-panel">
+        <div id="avgPie" class="kpi"></div>
+        <div id="topPie" class="kpi"></div>
+        <div id="lowPie" class="kpi"></div>
+      </div>
+  
+      <div class="viewer-panel">
+        <div id="forgeViewer"></div>
+      </div>
+  
+      <div class="right-panel">
+        <div id= "rankingTable"></div>
+          <h3>座席別稼働率ランキング</h3>
+      </div>
+    </div>
+  
+    <!-- 下段：グラフ（左右2分割、全幅） -->
+    <div class="bottom-graphs">
+      <div id="lineChart"></div>
+      <div id="seatLineChart"></div>
+    </div>
+  </div>
+  
+
+</body>
+
+  
+  <script>
+    flatpickr("#start", {
+      locale: "ja", dateFormat: "Y-m-d", defaultDate: "2023-04-17", showMonths: 3
+    });
+    flatpickr("#end", {
+      locale: "ja", dateFormat: "Y-m-d", defaultDate: "2023-04-21", showMonths: 3
+    });
+
+    // === カラー判定関数 ===
+    function getColor(rate) {
+      if (rate < 30) return "#3b82f6";     // 青
+      if (rate < 60) return "#10b981";     // 緑
+      if (rate < 80) return "#facc15";     // 黄
+      return "#ef4444";                    // 赤
+    }
+
+    // === ドーナツ描画関数（座席番号＋稼働率対応） ===
+    function renderDonutChart(domId, title, value, seatId = null) {
+  const dom = document.getElementById(domId);
+  if (!dom) return;
+  echarts.dispose(dom);
+  const chart = echarts.init(dom);
+
+  const color = getColor(value);
+  const mainText = seatId ? `No.${seatId}` : "";
+  const subText = `${value}%`;
+
+  chart.setOption({
+    title: {
+      text: title,
+      left: "center",
+      top: 10,
+      textStyle: { fontSize: 16, fontWeight: "bold" }
+    },
+    series: [
+      {
+        type: "pie",
+        radius: ["65%", "83%"],
+        center: ["50%", "55%"],
+        data: [
+          { value, name: "稼働" },
+          { value: 100 - value, name: "非稼働" }
+        ],
+        color: [color, "#e5e7eb"],
+        label: { show: false },
+        silent: true
+      }
+    ],
+    graphic: [
+      {
+        type: "text",
+        left: "center",
+        top: "45%",
+        style: {
+          text: mainText,
+          fontSize: 18,
+          fontWeight: "bold",
+          fill: "#374151",
+          textAlign: "center"
+        }
+      },
+      {
+        type: "text",
+        left: "center",
+        top: "55%",
+        style: {
+          text: subText,
+          fontSize: 28,
+          fontWeight: "bold",
+          fill: color,
+          textAlign: "center"
+        }
+      }
+    ]
+  });
+
+  // ✅ リサイズ対応（何度呼ばれても安定）
+  window.addEventListener("resize", () => {
+    chart.resize();
+  });
+  setTimeout(() => chart.resize(), 300); // 初回描画補正
+}
+
+    // === ランキングHTML生成 ===
+    function renderRankingTable(seatAvg) {
+      const sorted = [...seatAvg].sort((a, b) => b.rate - a.rate);
+
+      const rows = sorted.map((s, i) => {
+        const rate = parseFloat(s.rate);
+        const color = getColor(rate);
+
+        // 横棒の幅を割合で設定
+        const bar = `
+          <div class="bar-bg">
+            <div class="bar-fill" style="background:${color}; width:${rate}%;"></div>
+          </div>
+        `;
+
+        return `
+          <tr data-seat="${s.id}">
+            <td class="rank" style="width:40px;">${i + 1}</td>
+            <td class="seat" style="width:70px;">No.${s.id}</td>
+            <td class="bar">${bar}</td>
+            <td class="rate" style="width:60px; color:${color}">${rate.toFixed(1)}%</td>
+          </tr>`;
+      }).join("");
+
+      const html = `
+        <h3>座席別稼働率ランキング</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>順位</th><th>座席</th><th>稼働率</th><th>%</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+      document.getElementById("rankingTable").innerHTML = html;
+    }
+
+
+    async function loadData() {
+      const floor = document.getElementById("floor").value;
+      const start = document.getElementById("start").value;
+      const end = document.getElementById("end").value;
+      const shop_name = `赤坂_${floor}階`;
+      const url = `http://localhost:3001/api/seat-usage?shop_name=${shop_name}&start=${start}&end=${end}`;
+      console.log("🔹 Fetch:", url);
+
+      const res = await fetch(url);
+      const data = await res.json();
+      if (!data.length) { alert("データがありません。"); return; }
+
+      // --- 日別平均 ---
+      const grouped = {};
+      data.forEach(r => {
+        const date = r.usedate.value || r.usedate;
+        if (!grouped[date]) grouped[date] = { total: 0, used: 0 };
+        grouped[date].total++;
+        grouped[date].used += r.use_flg;
+      });
+      const dates = Object.keys(grouped).sort();
+      const dailyRates = dates.map(d => (grouped[d].used / grouped[d].total * 100).toFixed(1));
+
+      // --- 座席別集計 ---
+      const seatDaily = {};
+      data.forEach(r => {
+        const id = r.seat_id;
+        const date = r.usedate.value || r.usedate;
+        if (!seatDaily[id]) seatDaily[id] = {};
+        if (!seatDaily[id][date]) seatDaily[id][date] = { used: 0, total: 0 };
+        seatDaily[id][date].used += r.use_flg;
+        seatDaily[id][date].total++;
+      });
+
+      const seatSeries = Object.keys(seatDaily).map(id => ({
+        name: `#${id}`,
+        type: "line",
+        smooth: false,
+        showSymbol: false,
+        data: dates.map(d =>
+          seatDaily[id][d] ? (seatDaily[id][d].used / seatDaily[id][d].total * 100).toFixed(1) : 0
+        )
+      }));
+
+      const seatAvg = Object.entries(seatDaily).map(([id, obj]) => {
+        let sumUsed = 0, sumTotal = 0;
+        Object.values(obj).forEach(v => { sumUsed += v.used; sumTotal += v.total; });
+        return { id, rate: (sumUsed / sumTotal * 100).toFixed(1) };
+      });
+
+      const avg = (dailyRates.reduce((a,b)=>a+parseFloat(b),0)/dailyRates.length).toFixed(1);
+      const topSeat = seatAvg.reduce((a,b)=> a.rate > b.rate ? a : b);
+      const lowSeat = seatAvg.reduce((a,b)=> a.rate < b.rate ? a : b);
+
+      // --- KPI 3つをドーナツで描画 ---
+      document.getElementById("avgPie").innerHTML = "";
+      document.getElementById("topPie").innerHTML = "";
+      document.getElementById("lowPie").innerHTML = "";
+      renderDonutChart("avgPie", "平均稼働率", parseFloat(avg));
+      renderDonutChart("topPie", "最も稼働率が高い座席", parseFloat(topSeat.rate), topSeat.id);
+      renderDonutChart("lowPie", "最も稼働率が低い座席", parseFloat(lowSeat.rate), lowSeat.id);
+
+      // --- ランキング表 ---
+      renderRankingTable(seatAvg);
+
+      // --- 最新データをForge用に保存 ---
+      window.latestSeatAvg = seatAvg;
+
+      // --- 折れ線グラフ ---
+      const lineChart = echarts.init(document.getElementById("lineChart"));
+      lineChart.setOption({
+        title: { text: `${shop_name} 日別平均稼働率`, left: "center" },
+        tooltip: { trigger: "axis", valueFormatter: (v) => `${v}%` },
+        xAxis: {
+          type: "category",
+          data: dates.map(d => new Date(d).toLocaleDateString("ja-JP", { month: "2-digit", day: "2-digit" })),
+          axisLabel: { rotate: 0, fontSize: 12 }
+        },
+        yAxis: {
+          type: "value", max: 100,
+          axisLabel: { formatter: "{value}%", fontSize: 12 }
+        },
+        series: [{
+          data: dailyRates,
+          type: "line",
+          smooth: false,
+          step: false,
+          symbol: "circle",
+          symbolSize: 6,
+          lineStyle: { width: 2, color: "#2563eb" },
+          areaStyle: { color: "rgba(37,99,235,0.15)" }
+        }]
+      });
+
+      const seatLineChart = echarts.init(document.getElementById("seatLineChart"));
+      seatLineChart.setOption({
+        title: { text: "座席別稼働率推移", left: "center" },
+        tooltip: { trigger: "axis", valueFormatter: (v) => `${v}%` },
+        legend: { type: "scroll", bottom: 0 },
+        xAxis: {
+          type: "category",
+          data: dates.map(d => new Date(d).toLocaleDateString("ja-JP", { month: "2-digit", day: "2-digit" })),
+          axisLabel: { rotate: 0, fontSize: 12 }
+        },
+        yAxis: {
+          type: "value", max: 100,
+          axisLabel: { formatter: "{value}%", fontSize: 12 }
+        },
+        series: seatSeries.map(s => ({
+          ...s,
+          smooth: false,
+          symbol: "none",
+          lineStyle: { width: 1.5 },
+        }))
+      });
+
+      // --- 右下 ランキング表 ---
+      renderRankingTable(seatAvg);
+    }
+     // === Forge Viewer === 
+let viewer;
+let geometryReady = false;
+
+async function initViewer() {
+  const options = {
+    env: 'AutodeskProduction',
+    getAccessToken: async (onTokenReady) => {
+      const res = await fetch('/api/aps/oauth/token');
+      const token = await res.json();
+      onTokenReady(token.access_token, token.expires_in);
+    }
+  };
+
+  Autodesk.Viewing.Initializer(options, () => {
+    const htmlDiv = document.getElementById('forgeViewer');
+    viewer = new Autodesk.Viewing.GuiViewer3D(htmlDiv);
+    viewer.start();
+
+    const documentId =
+      'urn:dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6YndtdDFhOWtzeXNwa3AzbHY2MWNsZGxveXUxeHQwenEtYmFzaWMtYXBwLyglRTUlQkElQTclRTUlQjglQUQlRTMlODMlQkIlRTQlQkYlQUUlRTclQjklOTUpJUU4JUI1JUE0JUU1JTlEJTgyWCVFNyVBNCVCRSVFMyU4MyU5MyVFMyU4MyVBQiVFNCVCOCU4RCVFNSU4QiU5NSVFNyU5NCVBMyVFNyVBRSVBMSVFNyU5MCU4NkJJTSVFMyU4MyVBMiVFMyU4MyU4NyVFMyU4MyVBQl8wNTE0LnJ2dA';
+
+    Autodesk.Viewing.Document.load(documentId, onDocumentLoadSuccess, onDocumentLoadFailure);
+  });
+}
+
+function onDocumentLoadSuccess(doc) {
+  const defaultModel = doc.getRoot().getDefaultGeometry();
+  viewer.loadDocumentNode(doc, defaultModel).then(() => {
+    console.log("Forgeモデル読み込み完了 ✅");
+    viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, async () => {
+      geometryReady = true;
+      console.log("🧱 GEOMETRY_LOADED_EVENT → 座席探索開始");
+      await new Promise(r => setTimeout(r, 800));
+      const floorLabel = `${document.getElementById("floor").value}F`;
+      identifyGeneralModelDbIds(floorLabel);
+    });
+  });
+}
+
+function onDocumentLoadFailure(err) {
+  console.error('Document load failed:', err);
+}
+
+async function identifyGeneralModelDbIds(targetFloor = "7F") {
+  const model = viewer.model;
+  if (!model) return console.warn("⚠️ モデル未ロード");
+  const instanceTree = model.getData()?.instanceTree;
+  if (!instanceTree) return console.warn("⚠️ instanceTree未取得");
+
+  // 末端ノード収集
+  const leafIds = [];
+  instanceTree.enumNodeChildren(instanceTree.getRootId(), (id) => {
+    if (instanceTree.getChildCount(id) === 0) leafIds.push(id);
+  }, true);
+
+  const seatIdToDbId = {};
+  model.getBulkProperties(leafIds, ['タイプ名', '階数', '階', 'Level', 'Level Name'], results => {
+    results.forEach(r => {
+      const typeProp = r.properties.find(p => p.displayName === 'タイプ名' && typeof p.displayValue === 'string');
+      const floorProp = r.properties.find(p => ['階数', '階', 'Level', 'Level Name'].includes(p.displayName));
+      if (!typeProp || !floorProp) return;
+
+      const typeName = typeProp.displayValue;
+      const floorName = String(floorProp.displayValue || '');
+
+      if (!/オフィスチェア/i.test(typeName)) return;
+      if (!floorName.includes(targetFloor)) return;
+
+      const m = typeName.match(/(\d+)$/);
+      if (!m) return;
+
+      const seatId = parseInt(m[1], 10);
+      seatIdToDbId[seatId] = r.dbId;
+    });
+
+    console.log(`✅ 座席マッピング完了: ${Object.keys(seatIdToDbId).length}件 (target=${targetFloor})`);
+    window.seatIdToDbId = seatIdToDbId;
+  });
+}
+
+function highlightSeat(seatId) {
+  if (!window.seatIdToDbId) return console.warn("⚠️ seatIdToDbId 未定義");
+  const dbid = window.seatIdToDbId[seatId];
+  if (!dbid) return console.warn(`⚠️ seat_id:${seatId} に対応する dbId が見つかりません`);
+
+  viewer.clearSelection();
+  viewer.isolate([dbid]);
+  viewer.fitToView([dbid], viewer.model, false);
+  viewer.select([dbid]);
+  console.log(`💡 Seat ${seatId} → dbId ${dbid} をハイライト`);
+}
+
+// ===================================================
+// 🎨 稼働率→色変換関数
+// === カラー判定関数 ===
+function getColor(rate) {
+  if (rate < 30) return "#3b82f6";     // 青
+  if (rate < 60) return "#10b981";     // 緑
+  if (rate < 80) return "#facc15";     // 黄
+  return "#ef4444";                    // 赤
+}
+
+// === HEXカラー → THREE.Vector4変換 ===
+function hexToVector4(hex) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return new THREE.Vector4(r, g, b, 1);
+}
+
+
+// === 稼働率に基づいてForgeに色適用 ===
+function applySeatColors(seatAvg) {
+  if (!viewer || !window.seatIdToDbId) {
+    console.warn("⚠️ viewerまたはseatIdToDbIdが未定義");
+    return;
+  }
+
+  console.log("🎨 applySeatColors 実行中: 座席数 =", seatAvg.length);
+  viewer.clearThemingColors();
+
+  const allDbIds = [];
+
+  seatAvg.forEach(seat => {
+    const dbId = window.seatIdToDbId[seat.id];
+    if (!dbId) return;
+    const colorHex = getColor(parseFloat(seat.rate)); // ← getColor() 使用
+    const color = hexToVector4(colorHex); // ← Forge用に変換
+    viewer.setThemingColor(dbId, color);
+    allDbIds.push(dbId);
+  });
+
+  console.log("✅ Forge モデルに稼働率カラーを適用完了");
+
+  // === 対象座席以外を非表示 ===
+  if (allDbIds.length > 0) {
+    viewer.isolate(allDbIds); // 🎯 座席のみ表示
+    viewer.fitToView(allDbIds); // 🔍 自動ズーム
+    console.log(`🟡 ${allDbIds.length} 個の座席を表示、それ以外を非表示`);
+  }
+}
+
+
+
+
+
+// ===================================================
+// 🚀 データ更新ボタンで呼ばれる処理
+async function loadDataAndColorize() {
+  console.log("🔹 データ更新開始...");
+  await loadData();
+
+  // loadData() の中で seatAvg を保存しておくこと！
+  const seatAvg = window.latestSeatAvg;
+  if (!seatAvg) {
+    console.warn("⚠️ seatAvg 未取得のため着色スキップ");
+    return;
+  }
+
+  if (geometryReady && window.seatIdToDbId) {
+    console.log("🟢 Forge geometryReady → 着色開始");
+    applySeatColors(seatAvg);
+  } else {
+    console.warn("⚠️ Forge モデル未準備。色付けはスキップ。");
+  }
+}
+
+// ===================================================
+// 🟡 ランキング表クリック → Forgeハイライト
+document.addEventListener('click', (e) => {
+  const row = e.target.closest('#rankingTable tbody tr');
+  if (!row) return;
+  const seatAttr = row.getAttribute('data-seat');
+  const seatId = seatAttr ? parseInt(seatAttr, 10) : NaN;
+  if (!isNaN(seatId)) highlightSeat(seatId);
+});
+
+// ===================================================
+// 🏢 フロア変更時：データ更新 + モデル側の座席再マッピング
+document.getElementById('floor').addEventListener('change', async () => {
+  await loadData();
+  if (geometryReady) {
+    await new Promise(r => setTimeout(r, 300));
+    identifyGeneralModelDbIds(`${document.getElementById("floor").value}F`);
+  }
+});
+
+// ===================================================
+// 🧩 ページ読込時：データとViewerを初期化
+window.onload = () => {
+  loadData();
+  initViewer();
+};
+
+
+  </script>
+</body>
+</html>

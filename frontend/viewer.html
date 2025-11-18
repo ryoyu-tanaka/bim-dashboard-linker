@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Forge Viewer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js"></script>
+  <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css" />
+  <style>
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+    }
+    #viewerContainer {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="viewerContainer"></div>
+
+  <script>
+    let viewer;
+    const floorToDbIdMap = {
+      // ✅ 階層ごとのdbIdをマッピング（ダミー例）
+      1: 101, 2: 102, 3: 103, 4: 104, 5: 105,
+      6: 106, 7: 107, 8: 108, 9: 109
+    };
+
+    // 🚀 Forge Viewer初期化
+    async function initViewer() {
+      const options = {
+        env: "AutodeskProduction",
+        getAccessToken: async (onTokenReady) => {
+          const res = await fetch('/api/aps/oauth/token');
+          const token = await res.json();
+          onTokenReady(token.access_token, token.expires_in);
+        }
+      };
+
+      Autodesk.Viewing.Initializer(options, () => {
+        const htmlDiv = document.getElementById("viewerContainer");
+        viewer = new Autodesk.Viewing.GuiViewer3D(htmlDiv);
+        const startedCode = viewer.start();
+        if (startedCode > 0) {
+          console.error("Viewer failed to start!");
+          return;
+        }
+
+        // ✅ サイズ安定化（iframe内レンダー停止防止）
+        window.addEventListener("load", () => viewer.resize());
+        window.addEventListener("resize", () => viewer.resize());
+
+        const documentId = 'urn:dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6YndtdDFhOWtzeXNwa3AzbHY2MWNsZGxveXUxeHQwenEtYmFzaWMtYXBwLyglRTUlQkElQTclRTUlQjglQUQlRTMlODMlQkIlRTQlQkYlQUUlRTclQjklOTUpJUU4JUI1JUE0JUU1JTlEJTgyWCVFNyVBNCVCRSVFMyU4MyU5MyVFMyU4MyVBQiVFNCVCOCU4RCVFNSU4QiU5NSVFNyU5NCVBMyVFNyVBRSVBMSVFNyU5MCU4NkJJTSVFMyU4MyVBMiVFMyU4MyU4NyVFMyU4MyVBQl8wNTE0LnJ2dA';
+        Autodesk.Viewing.Document.load(documentId, onDocumentLoadSuccess, onDocumentLoadFailure);
+      });
+    }
+
+    // ✅ モデル読み込み成功
+    function onDocumentLoadSuccess(doc) {
+      const viewables = doc.getRoot().getDefaultGeometry();
+      viewer.loadDocumentNode(doc, viewables).then(() => {
+        console.log("Forgeモデル読み込み完了 ✅");
+
+        // GEOMETRY_LOADED_EVENT発火 → さらに1秒待機してから通知
+        viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, async () => {
+          console.log("🧱 GEOMETRY_LOADED_EVENT 発火 → 1秒待機中...");
+          await new Promise(r => setTimeout(r, 1000));
+
+          console.log("✅ Viewer Ready → 親に通知");
+          window.parent.postMessage({ type: "VIEWER_READY" }, "*");
+
+          identifyGeneralModelDbIds();
+        });
+      });
+    }
+
+    function onDocumentLoadFailure(err) {
+      console.error("Document load failed:", err);
+    }
+
+    // 🧠 モデル内座席ID抽出
+    async function identifyGeneralModelDbIds(targetFloor = "7F") {
+      console.log("🌳 一般モデルのDbId識別開始...");
+      const model = viewer.model;
+      if (!model) return console.warn("⚠️ モデル未ロード");
+
+      await new Promise(r => setTimeout(r, 1000));
+
+      const instanceTree = model.getData()?.instanceTree;
+      if (!instanceTree) return console.warn("⚠️ instanceTree未取得");
+
+      const leafIds = [];
+      instanceTree.enumNodeChildren(instanceTree.getRootId(), (id) => {
+        if (instanceTree.getChildCount(id) === 0) leafIds.push(id);
+      }, true);
+
+      const seatIdToDbId = {};
+      model.getBulkProperties(leafIds, ['タイプ名', '階数', 'Level', '階', 'Level Name'], results => {
+        results.forEach(r => {
+          const typeProp = r.properties.find(p => p.displayName === 'タイプ名' && typeof p.displayValue === 'string');
+          const floorProp = r.properties.find(p => ['階数', '階', 'Level', 'Level Name'].includes(p.displayName));
+          if (!typeProp || !floorProp) return;
+          const typeName = typeProp.displayValue;
+          const floorName = String(floorProp.displayValue || '');
+          if (!/オフィスチェア/i.test(typeName)) return;
+          if (!floorName.includes(targetFloor)) return;
+          const match = typeName.match(/(\d+)$/);
+          if (!match) return;
+          const seatId = parseInt(match[1]);
+          seatIdToDbId[seatId] = r.dbId;
+        });
+        console.log(`✅ 座席DbId抽出完了 (${targetFloor}) 件数: ${Object.keys(seatIdToDbId).length}`);
+        window.seatIdToDbId = seatIdToDbId;
+      });
+    }
+
+    // 💺 座席ハイライト
+    function highlightSeat(seatId) {
+      if (!window.seatIdToDbId) return console.warn("⚠️ seatIdToDbId 未定義");
+      const dbid = window.seatIdToDbId[seatId];
+      if (!dbid) return console.warn(`⚠️ seat_id:${seatId} のdbId未検出`);
+      viewer.clearSelection();
+      viewer.isolate([dbid]);
+      viewer.fitToView([dbid]);
+      viewer.select([dbid]);
+      console.log(`💡 Seat ${seatId} → dbId ${dbid} ハイライト`);
+    }
+
+    // ⚡ 階層の色塗り（安全化版）
+    function applyFloorColors(items) {
+      const checkReady = () => {
+        if (!viewer || !viewer.impl || !viewer.impl.glrenderer() || !viewer.model) {
+          console.warn("⚠️ ViewerまだGL未初期化 → 再試行");
+          return setTimeout(checkReady, 500);
+        }
+
+        console.log("🟢 Viewer GL準備完了 → 着色開始");
+
+        const min = Math.min(...items.map(i => i.value));
+        const max = Math.max(...items.map(i => i.value));
+
+        items.forEach(({ floor, value }) => {
+          const intensity = (value - min) / (max - min || 1);
+          const color = new THREE.Vector4(1 - intensity, intensity, 0, 1); // 緑→赤
+          const dbId = floorToDbIdMap[floor];
+          if (dbId) {
+            try {
+              viewer.setThemingColor(dbId, color);
+            } catch (err) {
+              console.warn(`⚠️ setThemingColor失敗 (floor:${floor})`, err);
+            }
+          }
+        });
+        viewer.impl.sceneUpdated(true);
+        console.log("🎨 階層カラーリング完了");
+      };
+
+      checkReady();
+    }
+
+    // 📨 メッセージ受信（座席 + 電力 両対応）
+    window.addEventListener("message", (event) => {
+      const msg = event.data;
+      if (!msg) return;
+
+      // 座席ハイライト
+      if (msg.seat_id) {
+        console.log("📩 seat_id受信:", msg.seat_id);
+        highlightSeat(msg.seat_id);
+      }
+
+      // 電力量カラーリング
+      if (msg.type === "APPLY_FLOOR_COLORS") {
+        console.log("📩 電力量データ受信:", msg.items);
+        applyFloorColors(msg.items);
+      }
+    });
+
+    // 🚀 Viewer開始
+    initViewer();
+  </script>
+</body>
+</html>

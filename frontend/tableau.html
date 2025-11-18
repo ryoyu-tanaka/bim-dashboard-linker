@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Tableau Dashboard</title>
+  <style>
+    html, body { height: 100%; margin: 0; overflow: hidden; }
+    #vizContainer { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+  <div id="vizContainer"></div>
+
+  <script src="https://public.tableau.com/javascripts/api/tableau-2.min.js"></script>
+  <script>
+    let viz;
+
+    function initViz() {
+      const containerDiv = document.getElementById("vizContainer");
+      const url = "https://public.tableau.com/views/111_17620017804110/1?:language=ja-JP&:sid=&:redirect=auth&:display_count=n&:origin=viz_share_link"; // ← あなたのURL
+
+      const options = {
+        hideToolbar: false,
+        onFirstInteractive: () => {
+          console.log("✅ Tableauロード完了");
+
+          // 🕒 Tableau Publicはロード後すぐだとイベントが反応しない場合があるのでリトライ
+          let retries = 0;
+          const interval = setInterval(() => {
+            if (viz && retries < 3) {
+              console.log("🔁 イベントハンドラ登録試行", retries + 1);
+              addClickHandler();
+              retries++;
+            } else {
+              clearInterval(interval);
+            }
+          }, 2000);
+        }
+      };
+
+      viz = new tableau.Viz(containerDiv, url, options);
+    }
+
+    async function addClickHandler() {
+      try {
+        const workbook = viz.getWorkbook();
+        const activeSheet = workbook.getActiveSheet();
+        let worksheets = [];
+
+        if (activeSheet.getSheetType() === "dashboard") {
+          worksheets = activeSheet.getWorksheets();
+        } else {
+          worksheets = [activeSheet];
+        }
+
+        console.log("🧩 内部シート一覧:", worksheets.map(w => w.getName()));
+
+        const eventType = (tableau.TableauEventType && tableau.TableauEventType.MARKS_SELECTION)
+          ? tableau.TableauEventType.MARKS_SELECTION
+          : "marksselection";
+
+        worksheets.forEach(ws => {
+          const name = ws.getName();
+          if (name.includes("座席") || name.toLowerCase().includes("seat")) {
+            console.log("🎯 監視対象:", name);
+
+            const addFn = ws.addEventListenerAsync || ws.addEventListener;
+            if (typeof addFn === "function") {
+              addFn.call(ws, eventType, async (event) => {
+                const marks = await event.getMarksAsync();
+                marks.forEach(mark => {
+                  mark.getPairs().forEach(pair => {
+                    if (pair.fieldName.toLowerCase().includes("seat")) {
+                      const seatId = pair.formattedValue;
+                      console.log("✅ Tableauでクリックされた Seat ID:", seatId);
+                      // Forge viewer へ送信
+                      window.parent.postMessage({ type: "SELECT_SEAT", seatId }, "*");
+                    }
+                  });
+                });
+              });
+              console.log(`✅ イベント登録完了: ${name}`);
+            } else {
+              console.warn(`⚠️ ${name} は addEventListener に非対応`);
+            }
+          }
+        });
+
+        console.log("✅ Tableauイベントハンドラ登録完了");
+      } catch (err) {
+        console.error("❌ addClickHandler内でエラー:", err);
+      }
+    }
+
+    initViz();
+  </script>
+</body>
+</html>

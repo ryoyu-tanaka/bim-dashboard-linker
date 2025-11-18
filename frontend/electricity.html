@@ -1,0 +1,691 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Electricity Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr/dist/l10n/ja.js"></script>
+  <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js"></script>
+  <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css" />
+
+ <style>
+  body {
+    font-family: "游ゴシック", "Yu Gothic", sans-serif;
+    font-weight: bold;
+    margin: 0; padding: 0;
+    background: #f4f6fa;
+    color: #222;
+  }
+
+  header {
+    background: #1f2937;
+    color: white;
+    padding: 15px 30px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+
+  h2 {
+    margin: 0 0 15px 0;
+    font-size: 26px;
+    letter-spacing: 1px;
+  }
+
+  .controls {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  select, input, button {
+    font-family: "游ゴシック", "Yu Gothic", sans-serif;
+    font-weight: bold;
+    font-size: 18px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: 2px solid #2563eb;
+    outline: none;
+    transition: 0.2s;
+  }
+
+  select:hover, input:hover, button:hover {
+    transform: scale(1.03);
+    box-shadow: 0 0 8px rgba(37,99,235,0.3);
+  }
+
+  button {
+    background: #2563eb;
+    color: white;
+    cursor: pointer;
+  }
+
+  /* ====== レイアウト全体 ====== */
+  .main-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr 1.1fr; /* 左: KPI, 中央: Viewer, 右: 表＋グラフ */
+    gap: 16px;
+    height: calc(100vh - 180px);
+    margin: 10px 20px;
+  }
+
+  /* 左側 KPI */
+  .left-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .kpi {
+    flex: 1;
+    min-height: 140px;
+    border-radius: 12px;
+    background: white;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 10px;
+  }
+
+
+/* 中央 Viewer */
+.viewer-panel {
+  position: relative;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  display: flex;
+}
+
+#forgeViewer {
+  width: 100%;
+  height: 100%;
+  max-height: 100%; /* ✅ gridの高さ内に収まる */
+  border-radius: 12px;
+  object-fit: contain; /* ✅ Viewer内容がはみ出ないよう調整 */
+}
+
+
+  /* 右側（表＋グラフ） */
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    height: 100%;
+  }
+
+  .ranking-section {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    padding: 10px;
+    overflow-y: auto;
+  }
+
+  #rankingTable {
+    width: 100%;
+    border-collapse: collapse;
+    text-align: right;
+  }
+
+  #rankingTable th, #rankingTable td {
+    padding: 8px 10px;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 14px;
+  }
+
+  #rankingTable th {
+    background: #f9fafb;
+    position: sticky;
+    top: 0;
+  }
+
+  .graph-section {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    flex: 1;
+  }
+
+  .graph-box {
+    background: white;
+    border-radius: 12px;
+    padding: 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    height: 50%;
+  }
+</style>
+
+</head>
+
+<body>
+  <header>
+    <h2>電力量ダッシュボード</h2>
+    <div class="controls">
+      <input id="start" placeholder="開始日" />
+      <input id="end" placeholder="終了日" />
+    <button onclick="onUpdateClick()">データ更新</button>
+
+    </div>
+  </header>
+
+  <div class="main-layout">
+  <!-- 左：KPI -->
+  <div class="left-panel">
+    <div id="avgKPI" class="kpi"></div>
+    <div id="maxKPI" class="kpi"></div>
+    <div id="minKPI" class="kpi"></div>
+  </div>
+
+  <!-- 中央：Viewer -->
+  <div class="viewer-panel">
+    <div id="forgeViewer"></div>
+  </div>
+
+  <!-- 右：ランキング + グラフ2つ -->
+  <div class="right-panel">
+    <div class="ranking-section">
+      <table id="rankingTable"></table>
+    </div>
+    <div class="graph-section">
+      <div id="barChart" class="graph-box"></div>
+      <div id="lineChart" class="graph-box"></div>
+    </div>
+  </div>
+</div>
+
+
+ <!-- （前半のHTML・CSSはそのままでOK） -->
+
+<script>
+console.log("✅ electricity.html script loaded");
+flatpickr("#start", { locale: "ja", dateFormat: "Y-m-d", defaultDate: "2023-07-01" });
+flatpickr("#end", { locale: "ja", dateFormat: "Y-m-d", defaultDate: "2023-07-07" });
+
+// === KPI描画（共通スケール＋色分け） ===
+function getColorByUsage(value, maxValue) {
+  const ratio = value / maxValue;
+  if (ratio < 0.25) return "#3b82f6";
+  if (ratio < 0.5) return "#10b981";
+  if (ratio < 0.75) return "#facc15";
+  return "#ef4444";
+}
+
+function renderKPI(domId, title, value, unit = "kWh", globalMax = 1000) {
+  const dom = document.getElementById(domId);
+  echarts.dispose(dom);
+  const chart = echarts.init(dom);
+  const color = getColorByUsage(value, globalMax);
+
+  chart.setOption({
+    title: { text: title, left: "center", top: 10, textStyle: { fontSize: 16, fontWeight: "bold" } },
+    series: [{
+      type: "gauge",
+      radius: "90%",
+      min: 0,
+      max: globalMax,
+      progress: { show: true, width: 14, itemStyle: { color } },
+      axisLine: { lineStyle: { width: 14, color: [[1, "#e5e7eb"]] } },
+      pointer: { show: true, width: 4, length: "80%", itemStyle: { color: "#000000" } },
+      axisLabel: { fontSize: 12 },
+      detail: { valueAnimation: true, formatter: `${value.toFixed(1)} ${unit}`, fontSize: 15, color },
+      data: [{ value }]
+    }]
+  });
+}
+
+// === Forge Viewer 初期化 ===
+let viewer;
+async function initViewer() {
+  const options = {
+    env: "AutodeskProduction",
+    getAccessToken: async (onTokenReady) => {
+      const res = await fetch('/api/aps/oauth/token');
+      const token = await res.json();
+      onTokenReady(token.access_token, token.expires_in);
+    }
+  };
+  Autodesk.Viewing.Initializer(options, () => {
+    const htmlDiv = document.getElementById("forgeViewer");
+    viewer = new Autodesk.Viewing.GuiViewer3D(htmlDiv);
+    viewer.start();
+
+    const documentId = "urn:dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6YndtdDFhOWtzeXNwa3AzbHY2MWNsZGxveXUxeHQwenEtYmFzaWMtYXBwLyglRTUlQkElQTclRTUlQjglQUQlRTMlODMlQkIlRTQlQkYlQUUlRTclQjklOTUpJUU4JUI1JUE0JUU1JTlEJTgyWCVFNyVBNCVCRSVFMyU4MyU5MyVFMyU4MyVBQiVFNCVCOCU4RCVFNSU4QiU5NSVFNyU5NCVBMyVFNyVBRSVBMSVFNyU5MCU4NkJJTSVFMyU4MyVBMiVFMyU4MyU4NyVFMyU4MyVBQl8wNTE0LnJ2dA";
+    Autodesk.Viewing.Document.load(documentId, (doc) => {
+      const defaultModel = doc.getRoot().getDefaultGeometry();
+      viewer.loadDocumentNode(doc, defaultModel).then(() => viewer.fitToView());
+    }, (err) => console.error("❌ Document load failed:", err));
+  });
+}
+
+
+
+ // === データ取得・描画 ===
+async function loadElectricity() {
+  const start = document.getElementById("start").value;
+  const end = document.getElementById("end").value;
+
+  // =============================
+  // ① 時間別平均データ（グラフ用）
+  // =============================
+  const urlHourly = `http://localhost:3001/api/electricity/hourly?floor_min=1&floor_max=9&start=${start}&end=${end}`;
+  console.log("Fetch hourly:", urlHourly);
+
+  const resHourly = await fetch(urlHourly);
+  const hourlyData = await resHourly.json();
+  if (!hourlyData.length) {
+    alert("時間別データがありません。");
+    return;
+  }
+
+  // =============================
+  // ② 合計電力量データ（KPI・ランキング用）
+  // =============================
+  const urlSum = `http://localhost:3001/api/electricity?floor_min=1&floor_max=9&start=${start}&end=${end}`;
+  console.log("Fetch total:", urlSum);
+
+  const resSum = await fetch(urlSum);
+  const sumData = await resSum.json();
+  if (!sumData.length) {
+    alert("合計データがありません。");
+    return;
+  }
+
+  // ---- 集計（合計）----
+  const floors = [...new Set(sumData.map(d => d.floor))].sort((a, b) => a - b);
+  const floorSum = floors.map(floor => {
+    const row = sumData.find(d => d.floor === floor);
+    return row ? Number(row.kwh_sum) : 0;
+  });
+
+  const totalSum = floorSum.reduce((a, b) => a + b, 0);
+  const maxSum = Math.max(...floorSum);
+  const minSum = Math.min(...floorSum);
+  const maxF = floors[floorSum.indexOf(maxSum)];
+  const minF = floors[floorSum.indexOf(minSum)];
+
+// =============================
+// ③ 全体平均（1日あたり）を正確に算出
+// =============================
+
+// ✅ BigQueryの日別ビューから全階合計を取得
+const resDaily = await fetch(
+  `http://localhost:3001/api/electricity/daily?start=${start}&end=${end}`
+);
+const dailyData = await resDaily.json();
+
+if (!dailyData.length) {
+  alert("日別データがありません。");
+  return;
+}
+console.log("📊 日別データ:", dailyData);
+
+// ✅ 各日の全階合計を算出
+const dailyTotals = {};
+dailyData.forEach(d => {
+  const date = d.date?.value || d.date;
+  if (!dailyTotals[date]) dailyTotals[date] = 0;
+  dailyTotals[date] += d.kwh_sum;
+});
+
+// ✅ 各日合計の平均（= 全体の1日平均）
+const avgPerDayTotal =
+  Object.values(dailyTotals).reduce((a, b) => a + b, 0) /
+  Object.values(dailyTotals).length;
+
+// ✅ 各階も日平均に換算
+const startDate = new Date(start);
+const endDate = new Date(end);
+const days = (endDate - startDate) / (1000 * 60 * 60 * 24) + 1;
+const avgPerDay = totalSum / days / floors.length;
+const maxAvgPerDay = Math.max(...floorSum) / days;
+const minAvgPerDay = Math.min(...floorSum) / days;
+
+// 3メーター共通スケール
+const globalMax = Math.ceil(Math.max(avgPerDay, maxAvgPerDay) * 1.2 / 50) * 50;
+
+// === KPI描画（修正版） ===
+renderKPI("avgKPI", "全体平均（1日あたり）", avgPerDay, "kWh/日", globalMax);
+renderKPI("maxKPI", `最大利用階 (${floors[floorSum.indexOf(Math.max(...floorSum))]}F)`, maxAvgPerDay, "kWh/日", globalMax);
+renderKPI("minKPI", `最小利用階 (${floors[floorSum.indexOf(Math.min(...floorSum))]}F)`, minAvgPerDay, "kWh/日", globalMax);
+
+
+  // === ランキング表（合計ベースのまま） ===
+  const rows = floors
+    .map(
+      (f, i) =>
+        `<tr><td>${i + 1}</td><td>${f}F</td><td>${floorSum[i].toFixed(1)} kWh</td></tr>`
+    )
+    .join("");
+  document.getElementById("rankingTable").innerHTML = `
+    <thead><tr><th>#</th><th>階</th><th>合計電力量</th></tr></thead>
+    <tbody>${rows}</tbody>`;
+
+// =============================
+// ④ グラフ描画
+// =============================
+
+// === 左下：時間別平均電力量（階別） ===
+const line1 = echarts.init(document.getElementById("barChart"));
+
+// ✅ 修正ポイント：hours を先に定義
+const hours = [...new Set(hourlyData.map(d => d.hour))].sort((a, b) => a - b);
+
+const line1Series = floors.map(floor => ({
+  name: `${floor}F`,
+  type: "line",
+  showSymbol: false,
+  lineStyle: { width: 2 },
+  data: hours.map(h => {
+    const match = hourlyData.find(d => d.floor === floor && d.hour === h);
+    return match ? match.kwh_avg : 0;
+  }),
+}));
+
+line1.setOption({
+  title: { text: "時間別平均電力量（階別）", left: "center" },
+  tooltip: { trigger: "axis" },
+  legend: { top: 30, type: "scroll" },
+  grid: { top: 80, left: 60, right: 20, bottom: 50 },
+  xAxis: {
+    type: "category",
+    data: hours.map(h => `${h}:00`),
+    axisLabel: { fontSize: 12 },
+  },
+  yAxis: {
+    type: "value",
+    name: "kWh",
+    axisLabel: { fontSize: 12 },
+  },
+  series: line1Series,
+});
+
+
+// === 右下：日別電力量推移（階別） ===
+const line2 = echarts.init(document.getElementById("lineChart"));
+
+const resDaily2 = await fetch(
+  `http://localhost:3001/api/electricity/daily?floor_min=1&floor_max=9&start=${start}&end=${end}`
+);
+const dailyData2 = await resDaily2.json();
+
+if (!dailyData2.length) {
+  alert("日別データがありません。");
+  return;
+}
+
+// 🔹 日付を整形
+dailyData2.forEach(d => {
+  d.date = d.date?.value || d.date;
+});
+
+// 🔹 階別 × 日別に集計
+const floorDaily = {};
+dailyData2.forEach(d => {
+  if (!floorDaily[d.floor]) floorDaily[d.floor] = {};
+  if (!floorDaily[d.floor][d.date]) floorDaily[d.floor][d.date] = 0;
+  floorDaily[d.floor][d.date] += d.kwh_sum;
+});
+
+// 🔹 全日付リスト
+const dateList = [...new Set(dailyData2.map(d => d.date))].sort();
+
+// 🔹 折れ線シリーズ生成
+const lineSeries2 = Object.keys(floorDaily).map(floor => ({
+  name: `${floor}F`,
+  type: "line",
+  showSymbol: true,
+  lineStyle: { width: 2 },
+  data: dateList.map(date => floorDaily[floor][date] || 0),
+}));
+
+// 🔹 描画
+line2.setOption({
+  title: { text: "日別電力量推移（階別）", left: "center" },
+  tooltip: { trigger: "axis" },
+  legend: { top: 30, type: "scroll" },
+  grid: { top: 80, left: 60, right: 20, bottom: 50 },
+  xAxis: {
+    type: "category",
+    data: dateList,
+    axisLabel: { rotate: 45, fontSize: 12 },
+  },
+  yAxis: {
+    type: "value",
+    name: "kWh",
+    axisLabel: { fontSize: 12 },
+  },
+  series: lineSeries2,
+});
+
+}
+
+
+
+
+// ✅ ページ読み込み時：Viewerだけ初期化（色塗りはまだ）
+window.onload = async () => {
+  console.log("🔥 ページロード完了 → Forge Viewer初期化");
+  await initViewer(); // Viewerだけ起動
+};
+
+// ✅ 「データ更新」ボタン押下時イベント（明示的にトリガー）
+async function onUpdateClick() {
+  console.log("🔁 データ更新ボタン押下 → 電力量データ読み込み開始");
+  await loadElectricity(); // ← ここで全てのグラフ・KPI描画
+  console.log("🎨 Forgeモデル色分け処理を開始");
+  await colorWallsByElectricityFromServer(); // ← 下で定義する
+}
+  // ⬇⬇⬇ この下にコピペ ⬇⬇⬇
+  // ======================================================
+  // 🔹 Forge Viewer 電力量色分け機能追加
+  // ======================================================
+
+  // 各階の日平均電力量をもとにForgeモデルを色分け
+// ✅ Forgeモデルを階別日平均電力量で色分け
+// ✅ Forgeモデルを階別日平均電力量で色分け（コールバック版）
+// ✅ Forgeモデルを階別日平均電力量で色分け（完全探索版）
+// ✅ Forgeモデルの全ノードを走査してプロパティ確認用ログ出力
+// ✅ Forgeモデルを階別日平均電力量で色分け（完全探索＋基準レベル:B1FL対応）
+// ✅ Forgeモデルを階別日平均電力量で色分け
+// （KPIメーターと同色 / 壁のみ表示 / 壁は透過表示）
+async function colorWallsByElectricityFromServer() {
+  const start = document.getElementById("start").value;
+  const end = document.getElementById("end").value;
+
+  console.log("📡 Forge用データ取得開始:", start, "→", end);
+
+  // --- 日別データ取得 ---
+  const res = await fetch(
+    `http://localhost:3001/api/electricity/daily?floor_min=1&floor_max=9&start=${start}&end=${end}`
+  );
+  const dailyData = await res.json();
+  if (!dailyData.length) {
+    console.warn("⚠ 日別データがありません。");
+    return;
+  }
+
+  // --- ✅ 階別日平均電力量を算出 ---
+  const floorDailyAvg = {};
+  dailyData.forEach((d) => {
+    const date = d.date?.value || d.date;
+    if (!floorDailyAvg[d.floor]) floorDailyAvg[d.floor] = [];
+    floorDailyAvg[d.floor].push(d.kwh_sum);
+  });
+  Object.keys(floorDailyAvg).forEach((f) => {
+    floorDailyAvg[f] =
+      floorDailyAvg[f].reduce((a, b) => a + b, 0) / floorDailyAvg[f].length;
+  });
+
+  console.log("🎨 階別日平均電力量:", floorDailyAvg);
+
+  const model = viewer.model;
+  if (!model) {
+    console.warn("⚠ Forgeモデルがロードされていません。");
+    return;
+  }
+
+  const it = model.getData().instanceTree;
+  const colorMap = makeColorMap(floorDailyAvg);
+
+  // ✅ 全ノード探索（完全再帰）
+  const allDbIds = [];
+  function enumAllNodes(nodeId) {
+    allDbIds.push(nodeId);
+    it.enumNodeChildren(nodeId, (childId) => enumAllNodes(childId));
+  }
+  enumAllNodes(it.getRootId());
+  console.log(`🧱 モデル全体のdbId数: ${allDbIds.length}`);
+
+  const wallDbIds = []; // 壁だけ保存
+
+  // --- 全dbId走査 ---
+  for (const dbId of allDbIds) {
+    await new Promise((resolve) => {
+      viewer.getProperties(dbId, (props) => {
+        if (!props || !props.properties) return resolve();
+
+        const categoryProp = props.properties.find(
+          (p) => p.displayName === "カテゴリ" || p.displayName === "Category"
+        );
+        if (
+          !categoryProp ||
+          (!categoryProp.displayValue.includes("壁") &&
+           !categoryProp.displayValue.includes("Wall"))
+        ) return resolve();
+
+        const baseLevelProp = props.properties.find(
+          (p) =>
+            p.displayName.includes("基準レベル") ||
+            p.displayName.includes("Base Level")
+        );
+        const baseLevel = baseLevelProp?.displayValue;
+        if (!baseLevel) return resolve();
+
+        // ✅ "B1FL" → -1, "1FL" → 1, "2FL" → 2 のように変換（P1FLは除外）
+let floor = null;
+
+// "B"から始まる地下階 ("B1FL" → -1)
+if (/^B\d+FL$/i.test(baseLevel)) {
+  const num = parseInt(baseLevel.match(/^B(\d+)FL$/i)[1]);
+  floor = -num;
+
+// 数字から始まる通常階 ("1FL" → 1, "2FL" → 2)
+} else if (/^\d+FL$/i.test(baseLevel)) {
+  floor = parseInt(baseLevel.match(/^(\d+)FL$/i)[1]);
+
+// GL（Ground Level）は1F扱い
+} else if (baseLevel.toUpperCase().includes("GL")) {
+  floor = 1;
+
+// それ以外（P1FL, RF, M1FL など）は対象外
+} else {
+  resolve();
+  return;
+}
+
+
+        if (!floor || !floorDailyAvg[floor]) return resolve();
+
+        wallDbIds.push({ dbId, floor });
+        resolve();
+      });
+    });
+  }
+
+  console.log(`🎯 壁カテゴリ対象数: ${wallDbIds.length}`);
+
+  // ✅ 壁以外を非表示
+  const allIds = allDbIds;
+  const visibleIds = wallDbIds.map(w => w.dbId);
+  viewer.isolate(visibleIds);
+  console.log("👁️ 壁以外を非表示にしました。");
+
+  // ✅ 壁を透過色で着色
+  const transparency = 0.5; // 0=不透明, 1=完全透明
+  for (const { dbId, floor } of wallDbIds) {
+    const c = colorMap[floor];
+    const color = new THREE.Vector4(
+      c.r / 255,
+      c.g / 255,
+      c.b / 255,
+      1 - transparency
+    );
+    viewer.setThemingColor(dbId, color);
+  }
+
+  console.log(`✅ 色付け完了（透過率: ${transparency}）`);
+  viewer.impl.sceneUpdated(true);
+}
+
+
+
+
+
+
+
+  // -----------------------------
+  // 基準レベル → 階番号変換
+  // -----------------------------
+  function levelToFloorNumber(baseLevel) {
+    if (!baseLevel) return null;
+    if (baseLevel.includes("GL") || baseLevel.includes("1F")) return 1;
+    const match = baseLevel.match(/(\d+)F/);
+    return match ? parseInt(match[1]) : null;
+  }
+
+  // -----------------------------
+  // 電力量 → カラーグラデーション変換
+  // -----------------------------
+  function makeColorMap(floorKwh) {
+    const values = Object.values(floorKwh);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const scale = (val) => (val - min) / (max - min);
+
+    const colors = {};
+    Object.entries(floorKwh).forEach(([floor, val]) => {
+      const t = scale(val);
+      const r = Math.round(255 * t);
+      const g = Math.round(255 * (1 - Math.abs(t - 0.5) * 2));
+      const b = Math.round(255 * (1 - t));
+      colors[floor] = { r, g, b };
+    });
+    return colors;
+  }
+
+  // -----------------------------
+  // loadElectricity() の最後に追記
+  // -----------------------------
+  async function applyColorFromDailyData(dailyData2) {
+    // 各階の日平均電力量を算出
+    const floorDailyAvg = {};
+    dailyData2.forEach((d) => {
+      if (!floorDailyAvg[d.floor]) floorDailyAvg[d.floor] = [];
+      floorDailyAvg[d.floor].push(d.kwh_sum);
+    });
+    Object.keys(floorDailyAvg).forEach((floor) => {
+      const arr = floorDailyAvg[floor];
+      floorDailyAvg[floor] = arr.reduce((a, b) => a + b, 0) / arr.length;
+    });
+
+    // Forgeに適用
+    await colorWallsByElectricity(floorDailyAvg);
+      // -----------------------------
+  // ✅ loadElectricity()の末尾にこの呼び出しを追加
+  // -----------------------------
+  await applyColorFromDailyData(dailyData2);
+  }
+
+
+</script>
+
+</body>
+</html>

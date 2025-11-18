@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <title>Construction Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+  <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.min.js"></script>
+  <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.min.css" />
+
+  <style>
+    body { font-family:"Inter","Yu Gothic",sans-serif; margin:0; background:#f4f6fa; color:#222; }
+    header { background:#1e293b; color:white; padding:16px 40px; display:flex; justify-content:space-between; align-items:center; box-shadow:0 2px 8px rgba(0,0,0,0.25); }
+    header h2 { margin:0; font-size:22px; font-weight:600; letter-spacing:1px; }
+    .year-select { display:flex; align-items:center; gap:10px; }
+    .year-select label { font-weight:600; font-size:14px; }
+    .select-wrapper { position:relative; display:inline-block; }
+    select { appearance:none; background-color:white; border:none; border-radius:8px; padding:8px 36px 8px 12px; font-size:14px; font-weight:600; color:#111827; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.15); transition:all 0.2s ease; }
+    select:hover { box-shadow:0 4px 8px rgba(0,0,0,0.2); transform:scale(1.02); }
+    .select-wrapper::after { content:"▼"; font-size:12px; color:#4b5563; position:absolute; right:12px; top:50%; transform:translateY(-50%); pointer-events:none; }
+    .summary-panel { display:flex; justify-content:space-around; align-items:center; margin:20px; background:white; border-radius:10px; box-shadow:0 2px 8px rgba(0,0,0,0.1); padding:20px; }
+    .summary-item { text-align:center; }
+    .summary-item h1 { margin:0; color:#2563eb; font-size:34px; }
+    .summary-item p { margin:5px 0 0 0; color:#666; }
+    .main-layout { display:grid; grid-template-columns:1.4fr 1.2fr 1fr; gap:16px; height:calc(100vh - 220px); margin:20px; }
+    .table-box { background:white; border-radius:12px; padding:20px; box-shadow:0 2px 8px rgba(0,0,0,0.1); overflow-y:auto; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    th,td { padding:6px 10px; border-bottom:1px solid #eee; text-align:left; }
+    th { background:#f3f4f6; }
+    .viewer-panel { position:relative; background:#fff; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,0.08); overflow:hidden; display:flex; }
+    #forgeViewer { width:100%; height:100%; border-radius:12px; }
+    .charts { display:flex; flex-direction:column; gap:16px; }
+    .chart-box { background:white; border-radius:12px; padding:10px; box-shadow:0 2px 8px rgba(0,0,0,0.1); height:50%; }
+    .chart-title { text-align:center; font-weight:bold; margin-bottom:6px; }
+
+    /* 🔹 カラーレジェンド */
+    .legend {
+      position:absolute;
+      top:16px;
+      right:16px;
+      background:white;
+      border-radius:8px;
+      box-shadow:0 2px 8px rgba(0,0,0,0.2);
+      padding:10px 14px;
+      width:160px;
+      font-size:12px;
+    }
+    .legend-bar {
+      height:14px;
+      border-radius:4px;
+      background:linear-gradient(to right,#2563eb,#10b981,#facc15,#ef4444);
+      margin:6px 0;
+    }
+    .legend-labels {
+      display:flex;
+      justify-content:space-between;
+      color:#555;
+    }
+    .table-box {
+  background: white;
+  border-radius: 12px;
+  padding: 0;                /* ← paddingを内側に移動（panel内に付ける） */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;          /* ← スクロールは子要素が持つ */
+  display: flex;
+}
+
+.slide-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.slide-wrapper {
+  display: flex;
+  transition: transform 0.4s ease;
+  width: 300%; /* ← スライド枚数に応じて設定（3パネルなら300%） */
+  height: 100%;
+}
+
+.slide-panel {
+  width: 100%;
+  flex-shrink: 0;
+  height: 100%;
+  overflow-y: auto;          /* ← これでスクロール可能に */
+  padding: 16px 20px;        /* ← 端に余白追加 */
+  box-sizing: border-box;
+  background: #fff;
+}
+
+/* スクロールバー調整（オプション） */
+.slide-panel::-webkit-scrollbar {
+  width: 8px;
+}
+.slide-panel::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+
+.work-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.work-list li {
+  padding: 8px 10px;
+  border-bottom: 1px solid #eee;
+  cursor: pointer;
+}
+.work-list li:hover { background: #f3f4f6; }
+
+.back-button {
+  color: #2563eb;
+  cursor: pointer;
+  font-weight: 600;
+  display: inline-block;
+  margin-bottom: 10px;
+}
+
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+.detail-table th {
+  text-align: left;
+  width: 30%;
+  padding: 8px 10px;
+  background: #f9fafb;
+  border-bottom: 1px solid #eee;
+  font-weight: 600;
+  color: #374151;
+  vertical-align: top;
+}
+
+.detail-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #eee;
+  color: #111827;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+
+
+  </style>
+</head>
+
+<body>
+  <header>
+    <h2>工事データダッシュボード</h2>
+    <div class="year-select">
+      <label for="yearSelect">年度：</label>
+      <div class="select-wrapper">
+        <select id="yearSelect">
+          <option value="">選択してください</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <div class="summary-panel">
+    <div class="summary-item">
+      <h1 id="totalCost">¥0</h1>
+      <p>合計工事金額</p>
+    </div>
+    <div class="summary-item">
+      <h1 id="totalCount">0件</h1>
+      <p>工事件数</p>
+    </div>
+  </div>
+
+<div class="main-layout">
+  <!-- 左カラム -->
+  <div class="table-box slide-container">
+    <div class="slide-wrapper" id="slideWrapper">
+      <!-- 🧾 費用の内訳 -->
+      <div class="slide-panel" id="panel-cost">
+        <h3>費用の内訳</h3>
+        <table id="detailTable">
+          <thead>
+            <tr><th>工事名</th><th>工種</th><th>部位</th><th>金額(円)</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <!-- 🏗️ 工事一覧 -->
+      <div class="slide-panel" id="panel-list">
+        <h3 id="floorTitle">工事一覧</h3>
+        <ul id="workList" class="work-list"></ul>
+      </div>
+
+      <!-- 📄 工事詳細 -->
+      <div class="slide-panel" id="panel-detail">
+        <h3 id="detailTitle">工事詳細</h3>
+        <div id="workDetail"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 中央：Forge Viewer -->
+  <div class="viewer-panel">
+    <div id="forgeViewer"></div>
+    <div class="legend" id="legendBox" style="display:none;">
+      <div><b>階別工事件数</b></div>
+      <div class="legend-bar"></div>
+      <div class="legend-labels">
+        <span id="minLabel">少</span>
+        <span id="maxLabel">多</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右カラム：グラフ -->
+  <div class="charts">
+    <div class="chart-box">
+      <div class="chart-title">階別工事件数</div>
+      <div id="chartFloorCount" style="width:100%;height:90%;"></div>
+    </div>
+    <div class="chart-box">
+      <div class="chart-title">部位別金額</div>
+      <div id="chartPartCost" style="width:100%;height:90%;"></div>
+    </div>
+  </div>
+</div>
+
+
+    <div class="viewer-panel">
+      <div id="forgeViewer"></div>
+
+      <!-- ✅ 凡例 -->
+      <div class="legend" id="legendBox" style="display:none;">
+        <div><b>階別工事件数</b></div>
+        <div class="legend-bar"></div>
+        <div class="legend-labels">
+          <span id="minLabel">少</span>
+          <span id="maxLabel">多</span>
+        </div>
+      </div>
+    </div>
+
+    
+  </div>
+
+  <!-- ✅ Forge Viewer右下に工事一覧パネル -->
+<div id="workListPanel" class="work-list-panel" style="display:none;">
+  <h4 id="workListTitle">工事一覧</h4>
+</div>
+
+<style>
+.work-list-panel {
+  position:absolute;
+  right:16px;
+  bottom:16px;
+  width:260px;
+  max-height:40%;
+  overflow-y:auto;
+  background:white;
+  border-radius:10px;
+  box-shadow:0 2px 8px rgba(0,0,0,0.2);
+  padding:10px 12px;
+  font-size:13px;
+}
+.work-list-panel h4 {
+  margin:0 0 6px 0;
+  font-size:14px;
+  font-weight:600;
+  color:#111827;
+}
+.work-list-panel ul { list-style:none; padding:0; margin:0; }
+.work-list-panel li {
+  padding:6px 8px;
+  border-bottom:1px solid #eee;
+  cursor:pointer;
+}
+.work-list-panel li:hover { background:#f3f4f6; }
+</style>
+
+
+<script>
+let allData = [], viewer;
+let currentFloor = null;  // 👈 追加：今選ばれている階（例: 3, 8, 10 など）
+const PROP_INDEX = { byDbId:new Map(), byFloor:new Map(), walls:new Set() };
+const ROOM_KEYWORDS = [
+  "非常用EVホール",
+  "男子トイレ",
+  "女子トイレ",
+  "給湯室",
+  "前室",
+  "EVホール",
+  "廊下",
+  "機械室"
+];
+
+
+window.onload = async () => {
+  const res = await fetch("http://localhost:3001/api/work/detail");
+  allData = await res.json();
+  const years = [...new Set(allData.map(d => d.year))].sort();
+  const sel = document.getElementById("yearSelect");
+  years.forEach(y => { const o=document.createElement("option"); o.value=y; o.textContent=y+"年"; sel.appendChild(o); });
+  sel.addEventListener("change",()=>updateDashboard(sel.value));
+  await initViewer();
+};
+
+// スライド位置: 0=内訳, 1=一覧, 2=詳細
+let currentSlide = 0;
+
+function slideTo(index) {
+  const wrapper = document.getElementById("slideWrapper");
+  wrapper.style.transform = `translateX(calc(-${index} * 100%))`;
+}
+
+
+function slideTo(index) {
+  const wrapper = document.getElementById("slideWrapper");
+  currentSlide = index;
+  wrapper.style.transform = `translateX(-${index * 100}%)`;
+}
+
+
+// ---------------- ダッシュボード更新 ----------------
+function updateDashboard(year){
+  if(!year)return;
+  const filtered=allData.filter(d=>String(d.year)===String(year));
+  const total=filtered.reduce((s,d)=>s+Number(d.cost_ex_tax||0),0);
+  document.getElementById("totalCost").textContent="¥"+total.toLocaleString();
+  document.getElementById("totalCount").textContent=filtered.length+"件";
+  updateDetailTable(filtered);
+  drawFloorCount(filtered);
+  drawPartCost(filtered);
+  applyFloorColorByWorkCount(filtered);
+}
+
+function updateDetailTable(data){
+  const tb=document.querySelector("#detailTable tbody");
+  tb.innerHTML="";
+  data.forEach(d=>{
+    tb.innerHTML+=`<tr><td>${d.work_name||"-"}</td><td>${d.category||"-"}</td><td>${d.part||"-"}</td><td>${Number(d.cost_ex_tax||0).toLocaleString()}</td></tr>`;
+  });
+}
+
+function drawFloorCount(data){
+  const floors=["B1F","1F","2F","3F","4F","5F","6F","7F","8F","9F","10F","RF"];
+  const keys=["b1f","1f","2f","3f","4f","5f","6f","7f","8f","9f","10f","rf"];
+  const counts=keys.map(k=>data.filter(d=>Number(d[k])===1).length);
+  const chart=echarts.init(document.getElementById("chartFloorCount"));
+  chart.setOption({tooltip:{trigger:"axis"},xAxis:{type:"category",data:floors},yAxis:{type:"value"},series:[{type:"bar",data:counts,itemStyle:{color:"#2563eb"}}]});
+}
+
+function drawPartCost(data){
+  const parts={};
+  data.forEach(d=>{const p=d.part||"不明";const v=Number(d.cost_ex_tax||0);parts[p]=(parts[p]||0)+v;});
+  const sorted=Object.entries(parts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  const chart=echarts.init(document.getElementById("chartPartCost"));
+  chart.setOption({tooltip:{trigger:"axis"},yAxis:{type:"category",data:sorted.map(d=>d[0]),inverse:true},xAxis:{type:"value"},series:[{type:"bar",data:sorted.map(d=>d[1]),itemStyle:{color:"#10b981"}}]});
+}
+
+// ---------------- Forge 初期化 ----------------
+async function initViewer(){
+  const options = {
+    env: "AutodeskProduction",
+    getAccessToken: async (cb) => {
+      const r = await fetch('/api/aps/oauth/token');
+      const t = await r.json();
+      cb(t.access_token, t.expires_in);
+    }
+  };
+
+  return new Promise(resolve => {
+    Autodesk.Viewing.Initializer(options, () => {
+      const c = document.getElementById("forgeViewer");
+      viewer = new Autodesk.Viewing.GuiViewer3D(c);
+      viewer.start();
+
+      const docId = 'urn:dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6YndtdDFhOWtzeXNwa3AzbHY2MWNsZGxveXUxeHQwenEtYmFzaWMtYXBwLyglRTUlQkElQTclRTUlQjglQUQlRTMlODMlQkIlRTQlQkYlQUUlRTclQjklOTUpJUU4JUI1JUE0JUU1JTlEJTgyWCVFNyVBNCVCRSVFMyU4MyU5MyVFMyU4MyVBQiVFNCVCOCU4RCVFNSU4QiU5NSVFNyU5NCVBMyVFNyVBRSVBMSVFNyU5MCU4NkJJTSVFMyU4MyVBMiVFMyU4MyU4NyVFMyU4MyVBQl8wNTE0LnJ2dA'; // ← あなたのURN
+      Autodesk.Viewing.Document.load(docId, (doc) => {
+        const geom = doc.getRoot().getDefaultGeometry();
+        viewer.loadDocumentNode(doc, geom).then(() => {
+          viewer.fitToView();
+
+          // ✅ モデル読み込み完了後にイベント登録
+          viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, async () => {
+            await indexModelProperties();
+            console.log("📚 Indexed Floors:", [...PROP_INDEX.byFloor.keys()]);
+
+            // ✅ ← ここに追加する
+viewer.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, async (ev) => {
+  if (!ev.dbIdArray || ev.dbIdArray.length === 0) return;
+  const dbId = ev.dbIdArray[0];
+  let rec = PROP_INDEX.byDbId.get(dbId);
+
+  // ✅ baseが取れてない場合、Forgeから直接取得
+  if (!rec || !rec.base) {
+    const props = await getProps(dbId);
+    const base = props.properties.find(p =>
+      ["基準レベル", "Base Level", "Level", "参照レベル", "基準拘束"].includes(p.displayName)
+    )?.displayValue;
+    const cat = props.properties.find(p =>
+      ["カテゴリ", "Category"].includes(p.displayName)
+    )?.displayValue;
+    rec = { ...rec, base, cat };
+  }
+
+  if (!rec || !rec.base) {
+    console.warn("⚠️ 階情報が見つかりません:", rec);
+    return;
+  }
+
+  const floor = parseFloorFromBaseLevel(rec.base);
+  if (floor === null) return;
+
+  console.log(`🏢 選択された要素 → ${rec.base}（階: ${floor}）`);
+
+  // ✅ 対応するfloorKey生成
+  const floorKey = (floor < 0)
+    ? `b${Math.abs(floor)}f`
+    : (floor === 999 ? "rf" : `${floor}f`);
+
+  // ✅ 階の工事データ抽出
+  const floorWorks = allData.filter(d => Number(d[floorKey]) === 1);
+
+  // ✅ 左パネル更新（既存機能維持）
+  updateWorkListPanel(floor, floorWorks);
+
+  // ✅ Forgeモデルで選択階のみ表示
+  const floorNodes = PROP_INDEX.byFloor.get(floor);
+  if (floorNodes && floorNodes.size > 0) {
+    // ✅ isolate対象から天井カテゴリ除外
+const ids = [...floorNodes].filter(id => {
+  const rec = PROP_INDEX.byDbId.get(id);
+  if (!rec) return false;
+  // 「壁」や「床」など残し、「天井」は除外
+  return rec.cat && !/天井|Ceiling/i.test(rec.cat);
+});
+
+// 階モデルをisolated表示＆ズーム
+if (ids.length > 0) {
+  viewer.isolate(ids);
+  viewer.fitToView(ids);
+}
+  // 🟢 自動ズーム
+  } else {
+    console.warn("⚠️ 階ノードが見つかりません:", floor);
+  }
+});
+
+
+            resolve();
+          });
+        });
+      });
+    });
+  });
+}
+
+
+// ---------------- プロパティ走査 ----------------
+function enumAllDbIds(){const it=viewer.model.getData().instanceTree;if(!it)return[];const r=it.getRootId();const all=[];(function w(id){all.push(id);it.enumNodeChildren(id,c=>w(c));})(r);return all;}
+function getProps(dbId){return new Promise(res=>viewer.getProperties(dbId,p=>res(p),()=>res(null)));}
+
+async function indexModelProperties(){
+  const all=enumAllDbIds();
+  const NAME=["名前","Name"],CATEGORY=["カテゴリ","Category"],BASELEVEL=["基準レベル"];
+  for(const id of all){
+    const p=await getProps(id); if(!p) continue;
+    const name=p.properties.find(x=>NAME.includes(x.displayName))?.displayValue;
+    const cat=p.properties.find(x=>CATEGORY.includes(x.displayName))?.displayValue;
+    const base=p.properties.find(x=>BASELEVEL.includes(x.displayName))?.displayValue;
+    const floor=parseFloorFromBaseLevel(base);
+    const normalizedFloor = (/GL/i.test(base)) ? 1 : floor;
+    if(normalizedFloor!==null){
+      if(!PROP_INDEX.byFloor.has(normalizedFloor))
+        PROP_INDEX.byFloor.set(normalizedFloor,new Set());
+      PROP_INDEX.byFloor.get(normalizedFloor).add(id);
+    }
+    if(cat&&/壁|Wall/i.test(cat))PROP_INDEX.walls.add(id);
+    PROP_INDEX.byDbId.set(id,{dbId:id,name,cat,base,floor:normalizedFloor});
+  }
+}
+// ===================================================
+// 🎨 稼働率→色変換関数
+// ===================================================
+
+// === カラー判定関数 ===
+function getColor(rate) {
+  if (rate < 30) return "#3b82f6";     // 青（低）
+  if (rate < 60) return "#10b981";     // 緑（中）
+  if (rate < 80) return "#facc15";     // 黄（高）
+  return "#ef4444";                    // 赤（非常に高）
+}
+
+// === HEXカラー → THREE.Vector4変換 ===
+function hexToVector4(hex, alpha=0.6) {
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return new THREE.Vector4(r, g, b, alpha);
+}
+
+function parseFloorFromBaseLevel(base){
+  if(!base) return null;
+  if(/^B\d+FL$/i.test(base)) return -parseInt(base.match(/^B(\d+)FL$/i)[1],10);
+  if(/^\d+FL$/i.test(base)) return parseInt(base.match(/^(\d+)FL$/i)[1],10);
+  if(/R|P|Roof|屋上/i.test(base)) return 999; // ✅ ここ追加
+  if(/GL/i.test(base)) return 1;
+  return null;
+}
+
+function applyFloorColorByWorkCount(data){
+  if(!viewer || !PROP_INDEX.byFloor.size) return;
+
+  viewer.clearThemingColors();
+
+  // 各階の件数カウント
+  const floorKeys = ["b1f","1f","2f","3f","4f","5f","6f","7f","8f","9f","10f","rf"];
+  const floorMap = new Map();
+  floorKeys.forEach((k,i)=>{
+    const count = data.filter(d => Number(d[k]) === 1).length;
+    floorMap.set(i===0?-1:i===11?999:i, count);
+  });
+
+  const max = Math.max(...floorMap.values());
+  const min = Math.min(...floorMap.values().filter(v=>v>0));
+
+  floorMap.forEach((count, floor)=>{
+    if(count === 0) return;
+    // ✅ 件数→割合（0〜100）
+    const rate = ((count - min) / (max - min || 1)) * 100;
+    const hexColor = getColor(rate);
+    const color = hexToVector4(hexColor, 0.6);
+
+    const floorNodes = PROP_INDEX.byFloor.get(floor);
+    if(!floorNodes) return;
+
+    const ids = [...floorNodes].filter(id=>{
+      const rec = PROP_INDEX.byDbId.get(id);
+      if(!rec) return false;
+      if(!/壁|Wall/i.test(rec.cat || "")) return false;
+      if(floor === 1 && /GL/i.test(rec.base)) return true;
+      if(floor === 999 && /R|Roof|屋上/i.test(rec.base)) return true;
+      return rec.floor === floor;
+    });
+
+    ids.forEach(id => viewer.setThemingColor(id, color));
+  });
+
+  viewer.isolate([...PROP_INDEX.walls]);
+  viewer.fitToView([...PROP_INDEX.walls]);
+
+  // ✅ 凡例更新
+  const legend = document.getElementById("legendBox");
+  document.getElementById("minLabel").textContent = min + "件";
+  document.getElementById("maxLabel").textContent = max + "件";
+  legend.style.display = "block";
+
+  console.log("🎨 Forgeモデル着色完了（GL・R階対応）");
+}
+
+// ================================================
+// 🧩 全モデルを走査 → Categoryが「Revit 一般モデル」の要素を全出力
+// ================================================
+async function debugListAllRevitGeneralModels() {
+  console.group("🔍 Revit 一般モデル 全スキャン開始");
+
+  const allIds = enumAllDbIds();
+  let count = 0;
+
+  for (const id of allIds) {
+    const props = await getProps(id);
+    if (!props || !props.properties) continue;
+
+    const category = props.properties.find(p =>
+      ["カテゴリ", "Category"].includes(p.displayName)
+    )?.displayValue;
+
+    if (!category || !/Revit\s*一般モデル/i.test(category)) continue;
+
+    count++;
+    console.group(`🧱 dbId: ${id} | Category: ${category}`);
+    props.properties.forEach(p => {
+      console.log(`${p.displayName}:`, p.displayValue);
+    });
+    console.groupEnd();
+  }
+
+  console.groupEnd();
+  console.log(`✅ 検出された「Revit 一般モデル」: ${count} 件`);
+}
+
+
+// 🔹 キャッシュ（階×カテゴリごとに保持）
+const MODEL_CACHE = new Map();
+
+async function highlightRoomsByKeyword(floor, keyword) {
+  console.group(`🔍 モデルフォーカス（階: ${floor}, キーワード: ${keyword}）`);
+
+  const floorLabel = `${floor}F`;
+  const allIds = enumAllDbIds();
+  const matchedIds = [];
+
+  for (const id of allIds) {
+    const props = await getProps(id);
+    if (!props || !props.properties) continue;
+
+    const category = props.properties.find(p =>
+      ["カテゴリ", "Category"].includes(p.displayName)
+    )?.displayValue;
+
+    if (!category || !/Revit\s*一般モデル/i.test(category)) continue;
+
+    const typeName = props.properties.find(p =>
+      ["タイプ名", "Type Name"].includes(p.displayName)
+    )?.displayValue;
+
+    const floorProp = props.properties.find(p =>
+      ["階数"].includes(p.displayName)
+    )?.displayValue;
+
+    if (!floorProp || floorProp.toUpperCase() !== floorLabel.toUpperCase()) continue;
+
+    const extractedKeyword =
+      typeName && typeName.includes("_") ? typeName.split("_")[1].trim() : null;
+
+    if (extractedKeyword && extractedKeyword.includes(keyword)) {
+      matchedIds.push(id);
+    }
+  }
+
+  if (matchedIds.length === 0) {
+    console.warn(`⚠️ 該当モデルなし（階: ${floor}, キーワード: ${keyword}）`);
+    return;
+  }
+
+  // ✅ 対象モデル isolate＋赤着色
+  viewer.clearThemingColors();
+  viewer.isolate(matchedIds);
+  matchedIds.forEach(id =>
+    viewer.setThemingColor(id, new THREE.Vector4(1, 0, 0, 0.9))
+  );
+  viewer.fitToView(matchedIds);
+
+  console.log(`✨ ${matchedIds.length} 件 isolate＆ハイライト完了`);
+  console.groupEnd();
+}
+
+
+
+
+
+
+function updateWorkListPanel(floor, works) {
+  // 👇 ここを必ず足す
+  currentFloor = floor;
+
+  const list = document.getElementById("workList");
+  const title = document.getElementById("floorTitle");
+  if (!works.length) return;
+
+  let floorLabel = floor === 999 ? "R階" : floor === -1 ? "B1階" : `${floor}階`;
+  title.textContent = `${floorLabel}の工事一覧（${works.length}件）`;
+
+  list.innerHTML = "";
+
+  const backBtn = document.createElement("div");
+  backBtn.className = "back-button";
+  backBtn.textContent = "← 戻る";
+  backBtn.onclick = () => {
+    // 全体に戻るボタン（ここは floor 使わない）
+    viewer.isolate([]);
+    applyFloorColorByWorkCount(allData);
+    currentFloor = null;   // 👈 全体ビューなのでクリアしておくと安全
+    slideTo(0);
+  };
+  list.appendChild(backBtn);
+
+  works.forEach(w => {
+    const li = document.createElement("li");
+    li.textContent = w.work_name || "(名称不明)";
+    li.onclick = () => showWorkDetail(w);
+    list.appendChild(li);
+  });
+
+  slideTo(1);
+}
+
+
+
+// --------------------------------------------
+// ✅ 工事詳細表示
+// --------------------------------------------
+function showWorkDetail(work) {
+  const detailDiv = document.getElementById("workDetail");
+  const title = document.getElementById("detailTitle");
+  title.textContent = work.work_name || "(名称不明)";
+
+  // ✅ 表示対象：階フラグ以外を抽出
+  const skipKeys = [
+    "b1f", "1f", "2f", "3f", "4f", "5f", "6f", "7f", "8f", "9f", "10f", "rf"
+  ];
+
+  const labels = {
+    _property_id_: "修繕工事ID",
+    property_name: "物件名",
+    year: "年度",
+    completion_date: "完了日",
+    work_name: "工事名",
+    category: "工種",
+    part: "部位",
+    detail: "内容",
+    work_detail: "工事内容",
+    reason: "工事実施理由",
+    approval_note: "見積書パス",
+    contractor: "工事業者",
+    responsible_person: "修繕担当者",
+    cost_ex_tax: "工事金額（税別）",
+    status: "ステータス"
+  };
+
+  let tableRows = "";
+
+  for (const [key, value] of Object.entries(work)) {
+    if (skipKeys.includes(key)) continue;
+    const label = labels[key] || key;
+    let val = value ?? "-";
+
+    // 金額フォーマット
+    if (key === "cost_ex_tax" && !isNaN(val))
+      val = "¥" + Number(val).toLocaleString();
+
+    // 改行含む長文は整形
+    if (typeof val === "string" && val.includes("\n"))
+      val = val.replace(/\n/g, "<br>");
+
+    tableRows += `
+      <tr>
+        <th style="white-space:nowrap;">${label}</th>
+        <td>${val}</td>
+      </tr>
+    `;
+  }
+
+  detailDiv.innerHTML = `
+    <table style="
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+      table-layout: fixed;
+      word-break: break-word;
+    ">
+      <tbody>${tableRows}</tbody>
+    </table>
+    <div class="back-button" onclick="returnToList()">← 一覧へ戻る</div>
+  `;
+
+  // ✅ スライドを詳細画面に遷移
+  slideTo(2);
+
+  // ✅ モデルフォーカス処理（詳細に入ったときだけ）
+  const matchedKeyword = ROOM_KEYWORDS.find(kw =>
+    work.work_name && work.work_name.includes(kw)
+  );
+
+  if (matchedKeyword) {
+    console.log(`🎯 工事詳細 → キーワード「${matchedKeyword}」でモデルフォーカス`);
+    highlightRoomsByKeyword(currentFloor, matchedKeyword); // 🔴 isolate + 赤着色
+  }
+}
+
+// --------------------------------------------
+// ✅ 戻るボタン制御（階全体に戻す）
+// --------------------------------------------
+function returnToList() {
+  console.log("↩️ 一覧へ戻る → 階全体を再表示");
+
+  // currentFloor がちゃんと入っているとき
+  if (currentFloor != null && PROP_INDEX.byFloor.has(currentFloor)) {
+    const ids = [...PROP_INDEX.byFloor.get(currentFloor)];
+
+    viewer.clearThemingColors();
+    viewer.isolate(ids);                 // 👈 その階だけ表示
+    applyFloorColorByWorkCount(allData); // 👈 階別の色を戻す
+  } else {
+    // 念のための保険：floor が分からないときは全体に戻す
+    viewer.isolate([]);
+    applyFloorColorByWorkCount(allData);
+  }
+
+  // 画面だけ一覧に戻す
+  slideTo(1);
+}
+
+
+// --------------------------------------------
+// ✅ 一覧を閉じて全体へ戻る場合（最上位）
+// --------------------------------------------
+function closeWorkDetail(){
+  document.getElementById("workListPanel").innerHTML =
+    `<h4 id="workListTitle"></h4><ul id="workList"></ul>`;
+  document.getElementById("workListPanel").style.display = "none";
+
+  viewer.isolate([]);                  // 全体表示
+  applyFloorColorByWorkCount(allData); // 全体色
+  currentFloor = null;                 // 👈 全体なのでクリア
+  slideTo(0);
+}
+
+
+
+</script>
+</body>
+</html>

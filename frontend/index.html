@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>BIM-Dashboard Linker</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      background: #f0f2f5;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 🔹 上部メニューバー */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #1e2a38;
+      color: white;
+      padding: 10px 20px;
+    }
+
+    .tab-buttons {
+      display: flex;
+      gap: 10px;
+    }
+
+    .tab-buttons button {
+      background: #0078d7;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 4px;
+      color: white;
+      cursor: pointer;
+      font-weight: bold;
+      transition: 0.2s;
+    }
+
+    .tab-buttons button:hover {
+      background: #005fa3;
+    }
+
+    .tab-buttons button.active {
+      background: #00b050;
+    }
+
+    /* 🔹 iframe領域 */
+    iframe {
+      width: 100%;
+      height: calc(100vh - 60px);
+      border: none;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- ✅ 上部ナビ -->
+  <header>
+    <h2>BIM-Dashboard Linker</h2>
+    <div class="tab-buttons">
+      <button id="seatBtn" class="active">座席稼働率</button>
+      <button id="elecBtn">電力量</button>
+      <button id="constBtn">工事データ</button>
+    </div>
+  </header>
+
+  <!-- ✅ 切り替え対象iframe -->
+  <iframe id="contentFrame" src="./data.html"></iframe>
+
+  <script>
+    const iframe = document.getElementById("contentFrame");
+    const seatBtn = document.getElementById("seatBtn");
+    const elecBtn = document.getElementById("elecBtn");
+    const constBtn = document.getElementById("constBtn");
+
+    function activate(btn) {
+      [seatBtn, elecBtn, constBtn].forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    }
+
+    // 🔸 座席タブ
+    seatBtn.addEventListener("click", () => {
+      iframe.src = "./data.html";
+      activate(seatBtn);
+      console.log("🟢 座席モードに切り替え");
+    });
+
+    // 🔸 電力量タブ
+    elecBtn.addEventListener("click", () => {
+      iframe.src = "./electricity.html";
+      activate(elecBtn);
+      console.log("⚡ 電力量モードに切り替え");
+    });
+
+    // 🔸 工事タブ
+    constBtn.addEventListener("click", () => {
+      iframe.src = "./construction.html";
+      activate(constBtn);
+      console.log("🏗️ 工事データモードに切り替え");
+    });
+  </script>
+</body>
+</html>
