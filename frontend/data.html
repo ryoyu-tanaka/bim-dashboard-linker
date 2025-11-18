@@ -414,8 +414,9 @@
       const start = document.getElementById("start").value;
       const end = document.getElementById("end").value;
       const shop_name = `赤坂_${floor}階`;
-      const url = `http://localhost:3001/api/seat-usage?shop_name=${shop_name}&start=${start}&end=${end}`;
-      console.log("🔹 Fetch:", url);
+      const url = `/api/seat-usage?shop_name=${encodeURIComponent(shop_name)}&start=${start}&end=${end}`;
+
+
 
       const res = await fetch(url);
       const data = await res.json();
