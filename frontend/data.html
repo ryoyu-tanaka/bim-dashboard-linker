@@ -414,7 +414,7 @@
       const start = document.getElementById("start").value;
       const end = document.getElementById("end").value;
       const shop_name = `赤坂_${floor}階`;
-      const url = `http://13.231.123.15:3000/api/seat-usage?shop_name=${encodeURIComponent(shop_name)}&start=${start}&end=${end}`;
+      const url = `/api/seat-usage?shop_name=${encodeURIComponent(shop_name)}&start=${start}&end=${end}`;
       const res = await fetch(url);
       const data = await res.json();
       if (!data.length) { alert("データがありません。"); return; }
